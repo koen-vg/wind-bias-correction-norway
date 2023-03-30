@@ -1,0 +1,26 @@
+name: finse
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python
+  - pip
+  - mamba
+
+  # Essentials:
+  - atlite==0.2.10
+
+  # Dependencies of the workflow itself
+  - seaborn
+  - yaml
+  - numpy
+  - pandas
+  - geopandas
+  - cartopy
+  - statsmodels
+  - geopy
+
+  # For using in notebooks
+  - ipython
+  - ipykernel
+

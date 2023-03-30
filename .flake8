@@ -1,0 +1,4 @@
+
+
+[flake8]
+per-file-ignores = scripts/bias_correct_wind.py:F821
