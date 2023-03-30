@@ -10,20 +10,27 @@ production data from the wind farms. For grid cells with no wind
 farms, we use the bias correction from the nearest grid cell with a
 wind farm."""
 
+from multiprocessing import Pool
+
 import atlite
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
 import xarray as xr
+from geopy import distance
+from geopy.distance import lonlat
+from scipy.interpolate import interp1d
 
 
 def bias_correct(production_cfs, era5_cfs):
     """Estimates bias correction function from prod. and ERA5 data."""
     N = 1001
+    M = 101
     production_quantiles = production_cfs.quantile(np.linspace(0, 1, N))
     era5_quantiles = era5_cfs.quantile(np.linspace(0, 1, N))
 
+    # Define the bias correction function.
     def corrector(cf):
         # The bias correction function takes a capacity factor, finds
         # the quantile it is at in the ERA5 data, and returns the
@@ -34,7 +41,11 @@ def bias_correct(production_cfs, era5_cfs):
             )
         ]
 
-    return corrector
+    # Create a look-up table for the function to speed up
+    # computations, using interpolation.
+    x = np.linspace(0, 1, M)
+    y = corrector(x)
+    return interp1d(x, y)
 
 
 def bias_correct_data(data, corrector):
@@ -134,26 +145,77 @@ if __name__ == "__main__":
 
     # Bias correct the data for the grid cells without wind parks.
     nearest_windpark = {}
+    nearest_k_windparks = {}
     for _, row in norway_grid.iterrows():
-        nearest_windpark[row["index"]] = row.geometry.distance(
-            wind_parks.geometry
-        ).idxmin()
+        current_cell_coords = lonlat(*row.geometry.centroid.coords[0])
+        wind_park_distances = pd.Series(
+            index=wind_parks.index,
+            data=[
+                distance.distance(current_cell_coords, lonlat(*p.coords[0])).km
+                for p in wind_parks.geometry
+            ],
+        )
+        nearest_windpark[row["index"]] = wind_park_distances.idxmin()
+        near_parks = wind_park_distances.sort_values().index[
+            : snakemake.params.num_near_wind_parks
+        ]
+        weights = 1 / (wind_park_distances.loc[near_parks] ** 2 + 1)
+        weights = weights / weights.sum()
+        nearest_k_windparks[row["index"]] = weights.to_dict()
 
     corrected_cap_factors = cfs.copy()  # NB: Based on snakemake.wildcards.year.
-    for i, code in enumerate(corrected_cap_factors.columns):
-        # Select the corrector for the nearest windpark.
-        corrector = bias_correction_factors[nearest_windpark[code]]
-        corrected_cap_factors[code] = bias_correct_data(
-            corrected_cap_factors[code], corrector
+    corrected_cap_factors_weighted = (
+        cfs.copy()
+    )  # NB: Based on snakemake.wildcards.year.
+
+    def do_correction(code):
+        return bias_correct_data(
+            corrected_cap_factors[code], bias_correction_factors[nearest_windpark[code]]
         )
-        if i % 100 == 0:
-            print(
-                f"Finished correcting {i} out of "
-                f"{len(corrected_cap_factors.columns)} grid cells."
+
+    def do_correction_weighted(code):
+        return sum(
+            weight
+            * bias_correct_data(
+                corrected_cap_factors[code], bias_correction_factors[park]
             )
+            for park, weight in nearest_k_windparks[code].items()
+        )
+
+    print("Starting bias correction of capacity factors.")
+    with Pool(processes=snakemake.config["num_parallel_processes"]) as pool:
+        corrected_cap_factors = pd.concat(
+            pool.map(do_correction, cfs.columns), axis="columns"
+        )
+        corrected_cap_factors_weighted = pd.concat(
+            pool.map(do_correction_weighted, cfs.columns), axis="columns"
+        )
+
+    # for i, code in enumerate(corrected_cap_factors.columns):
+    #     # Select the corrector for the nearest windpark.
+    #     corrector = bias_correction_factors[nearest_windpark[code]]
+    #     corrected_cap_factors[code] = bias_correct_data(
+    #         corrected_cap_factors[code], corrector
+    #     )
+    #     # Apply correctors for nearest k windparks and computed weighted sum.
+    #     corrected_cap_factors_weighted[code] = sum(
+    #         weight
+    #         * bias_correct_data(
+    #             corrected_cap_factors[code], bias_correction_factors[park]
+    #         )
+    #         for park, weight in nearest_k_windparks[code].items()
+    #     )
+    #     if i % 100 == 0:
+    #         print(
+    #             f"Finished correcting {i} out of "
+    #             f"{len(corrected_cap_factors.columns)} grid cells."
+    #         )
 
     # Export the corrected (and uncorrected) capacity factors.
     xr.DataArray(corrected_cap_factors).to_netcdf(snakemake.output.corrected)
+    xr.DataArray(corrected_cap_factors_weighted).to_netcdf(
+        snakemake.output.corrected_weighted
+    )
     xr.DataArray(cfs).to_netcdf(snakemake.output.uncorrected)
 
     # Output for highres
@@ -166,7 +228,7 @@ if __name__ == "__main__":
         return f"x{x}y{y}"
 
     # Rename gridcells using the above formatting
-    corrected_for_highres = corrected_cap_factors.rename(
+    corrected_for_highres = corrected_cap_factors_weighted.rename(
         lambda code: format_coords(
             *tuple(
                 norway_grid.loc[norway_grid["index"] == code][

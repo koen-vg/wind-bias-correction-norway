@@ -1,4 +1,7 @@
-CORRECTOR_YEAR = 2019
+configfile: "config.yaml"
+
+
+CORRECTOR_YEAR = config["corrector_year"]
 
 
 rule bias_correct_wind:
@@ -11,9 +14,11 @@ rule bias_correct_wind:
     output:
         uncorrected="data/output/uncorrected_wind_capacity_factors_{year}.nc",
         corrected="data/output/corrected_wind_capacity_factors_{year}.nc",
+        corrected_weighted="data/output/corrected_wind_capacity_factors_weighted_{year}.nc",
         corrected_for_highres="data/output/corrected_wind_capacity_factors_{year}.parquet",
     params:
         corrector_year=CORRECTOR_YEAR,
+        num_near_wind_parks=config["num_near_wind_parks"],
     conda:
         "envs/environment.yaml"
     script:
@@ -28,6 +33,7 @@ rule plot_bias_correction:
         wind_parks="data/input/nve_wind_parks.geojson",
         uncorrected_cap_factors=f"data/output/uncorrected_wind_capacity_factors_{CORRECTOR_YEAR}.nc",
         corrected_cap_factors=f"data/output/corrected_wind_capacity_factors_{CORRECTOR_YEAR}.nc",
+        corrected_cap_factors_weighted=f"data/output/corrected_wind_capacity_factors_weighted_{CORRECTOR_YEAR}.nc",
     output:
         directory("data/output/plots"),
     params:
