@@ -89,8 +89,8 @@ uncorrected_data = xr.open_dataarray(
     snakemake.input.uncorrected_cap_factors
 ).to_pandas()
 corrected_data = xr.open_dataarray(snakemake.input.corrected_cap_factors).to_pandas()
-corrected_data_weighted = xr.open_dataarray(
-    snakemake.input.corrected_cap_factors_weighted
+corrected_data_simple = xr.open_dataarray(
+    snakemake.input.corrected_cap_factors_simple
 ).to_pandas()
 
 
@@ -112,22 +112,20 @@ corrected_caps = pd.DataFrame(
     ],
     index=wind_parks.index,
 )
-corrected_caps_weighted = pd.DataFrame(corrected_data_weighted).mean()
-corrected_caps_weighted = corrected_caps_weighted[
-    turbine_cells["gridcell_code"].unique()
-]
-corrected_caps_weighted = pd.DataFrame(
+corrected_caps_simple = pd.DataFrame(corrected_data_simple).mean()
+corrected_caps_simple = corrected_caps_simple[turbine_cells["gridcell_code"].unique()]
+corrected_caps_simple = pd.DataFrame(
     [
-        corrected_caps_weighted.loc[turbine_cells.loc[wind_park, "gridcell_code"]]
+        corrected_caps_simple.loc[turbine_cells.loc[wind_park, "gridcell_code"]]
         for wind_park in wind_parks.index
     ],
     index=wind_parks.index,
 )
 mean_caps = pd.concat(
-    [ERA5_mean_caps, production_mean_caps, corrected_caps, corrected_caps_weighted],
+    [ERA5_mean_caps, production_mean_caps, corrected_caps, corrected_caps_simple],
     axis=1,
 )
-mean_caps.columns = ["ERA5", "NVE", "corrected", "corrected_weighted"]
+mean_caps.columns = ["ERA5", "NVE", "corrected", "corrected_simple"]
 mean_caps.sort_values(by="ERA5", inplace=True)
 
 mean_caps.plot(
@@ -143,7 +141,7 @@ fig.savefig(os.path.join(snakemake.output[0], "mean_cap_factors.png"))
 ECDFs_reanalysis = {}
 ECDFS_nve = {}
 ECDFS_corrected = {}
-ECDFS_corrected_weighted = {}
+ECDFS_corrected_simple = {}
 for wind_park in wind_parks.index:
     ECDFs_reanalysis[wind_park] = ECDF(
         uncorrected_data[turbine_cells.loc[wind_park, "gridcell_code"]]
@@ -152,8 +150,8 @@ for wind_park in wind_parks.index:
     ECDFS_corrected[wind_park] = ECDF(
         corrected_data[turbine_cells.loc[wind_park, "gridcell_code"]]
     )
-    ECDFS_corrected_weighted[wind_park] = ECDF(
-        corrected_data_weighted[turbine_cells.loc[wind_park, "gridcell_code"]]
+    ECDFS_corrected_simple[wind_park] = ECDF(
+        corrected_data_simple[turbine_cells.loc[wind_park, "gridcell_code"]]
     )
 
 xs = np.linspace(0, 1, 1001)
@@ -163,14 +161,14 @@ for i, wind_park in enumerate(wind_parks.index):
     F = ECDFs_reanalysis[wind_park]
     G = ECDFS_nve[wind_park]
     H = ECDFS_corrected[wind_park]
-    I = ECDFS_corrected_weighted[wind_park]
+    I = ECDFS_corrected_simple[wind_park]
     ax = axs.flatten()[i]
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.plot(xs, G(xs), label="NVE", ls="dashed")
     ax.plot(xs, F(xs), label="ERA5", ls="dotted")
     ax.plot(xs, H(xs), label="ERA5 Corrected", ls="dashdot")
-    ax.plot(xs, I(xs), label="ERA5 Corrected Weighted")
+    ax.plot(xs, I(xs), label="ERA5 Corrected simple")
     ax.set_title(wind_park)
 
 # Place single legend (the one for one of the axes) outside the figure
@@ -188,33 +186,33 @@ G.set_index("index", inplace=True)
 G["corrected_cap_factor"] = corrected_data.mean()
 G.plot(column="corrected_cap_factor", figsize=(7, 7), legend=True, ax=axs[0, 0])
 axs[0, 0].set_title("Corrected capacity factor")
-G["corrected_cap_factor_weighted"] = corrected_data_weighted.mean()
+G["corrected_cap_factor_simple"] = corrected_data_simple.mean()
 G.plot(
-    column="corrected_cap_factor_weighted",
+    column="corrected_cap_factor_simple",
     figsize=(7, 7),
     legend=True,
     ax=axs[1, 0],
 )
-axs[1, 0].set_title("Corrected capacity factor (weighted)")
+axs[1, 0].set_title("Corrected capacity factor (simple)")
 
 G["correction"] = corrected_data.mean() - uncorrected_data.mean()
 G.plot(column="correction", figsize=(7, 7), legend=True, cmap="RdBu", ax=axs[0, 1])
 axs[0, 1].set_title("Correction")
-G["correction_weighted"] = corrected_data_weighted.mean() - uncorrected_data.mean()
+G["correction_simple"] = corrected_data_simple.mean() - uncorrected_data.mean()
 G.plot(
-    column="correction_weighted",
+    column="correction_simple",
     figsize=(7, 7),
     legend=True,
     cmap="RdBu",
     ax=axs[1, 1],
 )
-axs[1, 1].set_title("Correction (weighted)")
+axs[1, 1].set_title("Correction (simple)")
 
 G["ERA5_cap_factor"] = uncorrected_data.mean()
 G.plot(column="ERA5_cap_factor", figsize=(7, 7), legend=True, ax=axs[0, 2])
 axs[0, 2].set_title("ERA5 capacity factor")
 
-G["correction_difference"] = corrected_data_weighted.mean() - corrected_data.mean()
+G["correction_difference"] = corrected_data_simple.mean() - corrected_data.mean()
 G.plot(
     column="correction_difference",
     figsize=(7, 7),
