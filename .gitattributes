@@ -1,0 +1,1 @@
+data/input/TimeSeries_UTC_kWh_2022_all.csv filter=lfs diff=lfs merge=lfs -text
