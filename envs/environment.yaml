@@ -1,4 +1,4 @@
-name: finse
+name: wind-bias-correction
 channels:
   - conda-forge
   - bioconda
@@ -8,7 +8,7 @@ dependencies:
   - mamba
 
   # Essentials:
-  - atlite==0.2.10
+  - atlite==0.2.12
 
   # Dependencies of the workflow itself
   - seaborn
