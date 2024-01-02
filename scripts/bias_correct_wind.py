@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 import shapely
 import xarray as xr
+from dask.distributed import Client
 from geopy import distance
 from geopy.distance import lonlat
 from scipy.interpolate import interp1d
@@ -79,13 +80,19 @@ if __name__ == "__main__":
     ]
     norway_grid.reset_index(inplace=True)
 
+    client = Client(
+        n_workers=snakemake.config["num_parallel_processes"], threads_per_worker=1
+    )
+
     # Generate the capacity factors.
     cfs_corrector = cutout_corrector.wind(
-        turbine=turbine, shapes=norway_grid
+        turbine=turbine, shapes=norway_grid, dask_kwargs=dict(scheduler=client)
     ).to_pandas()
     cfs_corrector.rename(columns=norway_grid["index"].to_dict(), inplace=True)
 
-    cfs = cutout.wind(turbine=turbine, shapes=norway_grid).to_pandas()
+    cfs = cutout.wind(
+        turbine=turbine, shapes=norway_grid, dask_kwargs=dict(scheduler=client)
+    ).to_pandas()
     cfs.rename(columns=norway_grid["index"].to_dict(), inplace=True)
 
     # Load the wind park data (from NVE).
