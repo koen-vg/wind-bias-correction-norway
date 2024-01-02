@@ -28,8 +28,8 @@ def bias_correct(production_cfs, era5_cfs):
     """Estimates bias correction function from prod. and ERA5 data."""
     N = 1001
     M = 101
-    production_quantiles = production_cfs.quantile(np.linspace(0, 1, N))
-    era5_quantiles = era5_cfs.quantile(np.linspace(0, 1, N))
+    production_quantiles = production_cfs.clip(upper=1.0).quantile(np.linspace(0, 1, N))
+    era5_quantiles = era5_cfs.clip(upper=1.0).quantile(np.linspace(0, 1, N))
 
     # Define the bias correction function.
     def corrector(cf):
@@ -85,14 +85,22 @@ if __name__ == "__main__":
     )
 
     # Generate the capacity factors.
-    cfs_corrector = cutout_corrector.wind(
-        turbine=turbine, shapes=norway_grid, dask_kwargs=dict(scheduler=client)
-    ).to_pandas()
+    cfs_corrector = (
+        cutout_corrector.wind(
+            turbine=turbine, shapes=norway_grid, dask_kwargs=dict(scheduler=client)
+        )
+        .to_pandas()
+        .clip(upper=1.0)
+    )
     cfs_corrector.rename(columns=norway_grid["index"].to_dict(), inplace=True)
 
-    cfs = cutout.wind(
-        turbine=turbine, shapes=norway_grid, dask_kwargs=dict(scheduler=client)
-    ).to_pandas()
+    cfs = (
+        cutout.wind(
+            turbine=turbine, shapes=norway_grid, dask_kwargs=dict(scheduler=client)
+        )
+        .to_pandas()
+        .clip(upper=1.0)
+    )
     cfs.rename(columns=norway_grid["index"].to_dict(), inplace=True)
 
     # Load the wind park data (from NVE).
